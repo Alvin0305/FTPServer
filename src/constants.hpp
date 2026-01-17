@@ -11,7 +11,7 @@
 
 #define DB_FILE "../keys/users.db"
 #define TEMP_DB_FILE "../keys/temp.db"
-#define ENV_FILE "../keys/.env"
+#define ENV_FILE ".env"
 
 #define TEMP_FILE "temp.tmp"
 

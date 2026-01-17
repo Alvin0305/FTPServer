@@ -178,6 +178,7 @@ ClientState ClientHandler::commandHandler(const Request &request) {
             "  RENAME <old> <new>            Rename file or folder\n"
             "  CP <src> <dest>               Copy file or folder\n"
             "  MV <src> <dest>               Move file or folder\n"
+            "  STAT <file>                   View Details of the file\n"
             "\n"
             "Directory Operations:\n"
             "  MKDIR <folder>                Create a directory\n"
@@ -372,6 +373,19 @@ ClientState ClientHandler::commandHandler(const Request &request) {
             sendResponse(NOT_FOUND, "CAT", "No such file");
         } else {
             sendFile(currentPath / request.args[0], "CAT");
+        }
+    } else if (request.command == "STAT") {
+        if (!authenticated && !paired) {
+            sendResponse(NOT_AUTHORIZED, "STAT", "Login Required");
+        } else if (request.args.size() != 1) {
+            sendResponse(BAD_REQUEST, "STAT", "Invalid Format, stat <filename>");
+        } else if (fs::is_directory((currentPath / request.args[0]))) {
+            sendResponse(BAD_REQUEST, "STAT", "Cannot stat a folder, stat a file");
+        } else if (!fs::exists(currentPath / request.args[0])) {
+            sendResponse(NOT_FOUND, "STAT", "No such file");
+        } else {
+            const std::filesystem::path file = currentPath / request.args[0];
+            sendResponse(OK, "STAT", FileUtil::getStatOfFile(file));
         }
     } else {
         sendResponse(BAD_REQUEST, "ERROR", "Unknown Command: " + request.command);

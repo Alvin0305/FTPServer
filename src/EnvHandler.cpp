@@ -9,6 +9,15 @@ std::unordered_map<std::string, std::string> EnvHandler::envVariables{};
 
 void EnvHandler::load() {
     std::ifstream inFile(ENV_FILE);
+    if (!inFile.is_open()) {
+        std::cout << "Creating .env file" << std::endl;
+        std::ofstream outFile(ENV_FILE);
+        if (!outFile.is_open()) {
+            std::cout << "Creating .env file failed" << std::endl;
+        }
+        outFile << "DOWNLOAD_DIR=../downloads" << std::endl;
+        inFile.open(ENV_FILE);
+    }
     std::string line;
 
     while (getline(inFile, line)) {
