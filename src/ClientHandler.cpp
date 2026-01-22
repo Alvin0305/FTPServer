@@ -50,11 +50,10 @@ Request ClientHandler::readRequest() {
 void ClientHandler::sendResponse(const StatusCode statusCode, const std::string &responseType,
                                  const std::string &data) const {
     const std::string content = std::to_string(statusCode) + " " + responseType + " " + std::to_string(data.length()) +
-                                "\n" + data + "\n" + "END\n";
+                                "\n" + data;
 
     if (send(clientSocket, content.c_str(), content.length(), MSG_NOSIGNAL) <= 0) {
         perror("send");
-        exit(EXIT_FAILURE);
     }
 }
 
@@ -72,7 +71,7 @@ void ClientHandler::sendFile(const fs::path &path, const std::string &requestTyp
 
     if (send(clientSocket, header.c_str(), header.length(), MSG_NOSIGNAL) <= 0) {
         perror("send");
-        exit(EXIT_FAILURE);
+        return;
     }
 
     char buffer[1024];
@@ -92,11 +91,6 @@ void ClientHandler::sendFile(const fs::path &path, const std::string &requestTyp
     }
 
     file.close();
-    std::string end = "\nEND\n";
-    if (send(clientSocket, end.c_str(), end.length(), MSG_NOSIGNAL) <= 0) {
-        std::cerr << "failed to send END" << std::endl;
-        exit(EXIT_FAILURE);
-    }
 
     std::cout << std::endl;
 }
@@ -144,6 +138,7 @@ bool ClientHandler::saveFileToTemp(const Request &request) {
 }
 
 ClientState ClientHandler::commandHandler(const Request &request) {
+    std::cout << currentPath << std::endl;
     if (request.command == "PING") {
         sendResponse(OK, "PING", "PONG");
     } else if (request.command == "QUIT") {
@@ -217,7 +212,7 @@ ClientState ClientHandler::commandHandler(const Request &request) {
         if (!authenticated && !paired) {
             sendResponse(NOT_AUTHORIZED, "PWD", "Login Required");
         } else {
-            sendResponse(OK, "PWD", FileUtil::getSandBoxedPath(currentPath));
+            sendResponse(OK, "PWD", currentPath);
         }
     } else if (request.command == "CD") {
         if (!authenticated && !paired) {
@@ -317,8 +312,15 @@ ClientState ClientHandler::commandHandler(const Request &request) {
         } else if (std::filesystem::exists(currentPath / request.args[1])) {
             sendResponse(FORBIDDEN, "CP", "Destination file already exists");
         } else {
-            std::filesystem::copy(currentPath / request.args[0], currentPath / request.args[1],
-                                  std::filesystem::copy_options::recursive);
+            std::filesystem::path from(request.args[0]);
+            std::filesystem::path to(request.args[1]);
+            if (!from.is_absolute()) {
+                from = currentPath / from;
+            }
+            if (!to.is_absolute()) {
+                to = currentPath / to;
+            }
+            std::filesystem::copy(from, to, std::filesystem::copy_options::recursive);
             sendResponse(OK, "CP", "File Copied");
         }
     } else if (request.command == "MV") {
@@ -331,7 +333,16 @@ ClientState ClientHandler::commandHandler(const Request &request) {
         } else if (std::filesystem::exists(currentPath / request.args[1])) {
             sendResponse(FORBIDDEN, "MV", "Destination file already exists");
         } else {
-            std::filesystem::rename(currentPath / request.args[0], currentPath / request.args[1]);
+            std::filesystem::path from(request.args[0]);
+            std::filesystem::path to(request.args[1]);
+            if (!from.is_absolute()) {
+                from = currentPath / from;
+            }
+            if (!to.is_absolute()) {
+                to = currentPath / to;
+            }
+
+            std::filesystem::rename(from, to);
             sendResponse(OK, "MV", "File Moved");
         }
     } else if (request.command == "PASSWD") {
@@ -354,13 +365,13 @@ ClientState ClientHandler::commandHandler(const Request &request) {
     } else if (request.command == "PUT_") {
         const bool result = saveFileToTemp(request);
         if (!result) {
-            sendResponse(SERVER_ERROR, "PUT", "Upload failed");
+            sendResponse(SERVER_ERROR, "PUT_", "Upload failed");
         } else {
             std::filesystem::path savedTemp = STORAGE_DIR;
             savedTemp /= request.args[0] + ".tmp";
 
             std::filesystem::rename(savedTemp, currentPath / request.args[0]);
-            sendResponse(OK, "PUT", "File Uploaded");
+            sendResponse(OK, "PUT_", "File Uploaded");
         }
     } else if (request.command == "CAT") {
         if (!authenticated && !paired) {
@@ -387,7 +398,18 @@ ClientState ClientHandler::commandHandler(const Request &request) {
             const std::filesystem::path file = currentPath / request.args[0];
             sendResponse(OK, "STAT", FileUtil::getStatOfFile(file));
         }
+    } else if (request.command == "REG") {
+        if (request.args.size() != 2) {
+            sendResponse(BAD_REQUEST, "REG", "Invalid Format, reg <username> <password>");
+        } else {
+            AuthHandler::saveUser(request.args[0], request.args[1]);
+            authenticated = true;
+            currentPath = STORAGE_DIR;
+            username = request.args[0];
+            sendResponse(OK, "REG", "User Created");
+        }
     } else {
+        std::cout << "Invalid Request: " << request.command << std::endl;
         sendResponse(BAD_REQUEST, "ERROR", "Unknown Command: " + request.command);
     }
 
@@ -397,6 +419,9 @@ ClientState ClientHandler::commandHandler(const Request &request) {
 void ClientHandler::run() {
     while (true) {
         Request request = readRequest();
+        if (request.command.empty()) {
+            break;
+        }
 
         if (commandHandler(request) == STOP) {
             break;

@@ -6,6 +6,7 @@ public:
     explicit Server();
     ~Server();
     void run() const;
+    static void startBroadcast();
 
 private:
     int socket_fd;

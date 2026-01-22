@@ -156,7 +156,6 @@ void Client::receiveFile(const ReturnHeader &header) {
 
     outFile.close();
     std::cout << "\nFile Received: " << downloadFile << std::endl;
-    consumeEnd();
 }
 
 void Client::catFile(const ReturnHeader &header) {
@@ -190,24 +189,6 @@ void Client::catFile(const ReturnHeader &header) {
             totalReceived += received;
         }
     }
-
-    consumeEnd();
-}
-
-void Client::consumeEnd() {
-    constexpr int size = 5;
-    unsigned long received = recvBuffer.length();
-    char buffer[BUFFER_SIZE];
-
-    while (received < size) {
-        const ssize_t n = recv(socket_fd, buffer, BUFFER_SIZE, 0);
-        recvBuffer.append(buffer, n);
-
-        received += n;
-    }
-
-    std::string response = recvBuffer.substr(0, size);
-    recvBuffer.erase(0, size);
 }
 
 bool Client::sendFile(const Request &request) const {
@@ -276,14 +257,12 @@ void Client::run() {
             sendRequest(line);
             const ReturnHeader header = extractHeader();
             const std::string response = receiveResponse(header);
-            consumeEnd();
 
             if (header.status != OK) {
                 std::cout << response << std::endl;
             } else if (sendFile(request)) {
                 ReturnHeader putReturnHeader = extractHeader();
                 std::cout << receiveResponse(putReturnHeader) << std::endl;
-                consumeEnd();
             }
             continue;
         }
@@ -306,7 +285,6 @@ void Client::run() {
         }
 
         std::cout << receiveResponse(header) << std::endl;
-        consumeEnd();
     }
 
     std::cout << "Closing connection with server" << std::endl;
